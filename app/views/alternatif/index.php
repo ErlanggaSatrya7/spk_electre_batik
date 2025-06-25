@@ -102,23 +102,20 @@ $kategoriList = $conn->query("SELECT DISTINCT kategori FROM alternatif WHERE kat
     <?php include '../layouts/footer.php'; ?>
   </div>
 
-<!-- Modal Galeri -->
-<div id="galleryModal" class="fixed inset-0 z-50 bg-black bg-opacity-70 hidden flex items-center justify-center">
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-xl w-[90%] relative text-center p-6">
-    <button onclick="closeGalleryModal()" class="absolute top-3 right-4 text-gray-500 hover:text-red-600">✖</button>
-    <h2 class="text-lg font-semibold mb-3 text-indigo-600 dark:text-indigo-300">Galeri Gambar</h2>
-    
-    <div class="flex justify-center items-center min-h-[300px]">
-      <img id="galleryImage" src="" class="max-h-[500px] w-auto object-contain mx-auto rounded border shadow" alt="preview" />
-    </div>
-
-    <div class="flex justify-between mt-4">
-      <button onclick="prevImage()" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600">← Sebelumnya</button>
-      <button onclick="nextImage()" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600">Berikutnya →</button>
+  <!-- Modal Galeri -->
+  <div id="galleryModal" class="fixed inset-0 z-50 bg-black bg-opacity-70 hidden flex items-center justify-center">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-xl w-[90%] relative text-center p-6">
+      <button onclick="closeGalleryModal()" class="absolute top-3 right-4 text-gray-500 hover:text-red-600">✖</button>
+      <h2 class="text-lg font-semibold mb-3 text-indigo-600 dark:text-indigo-300">Galeri Gambar</h2>
+      <div class="flex justify-center items-center min-h-[300px]">
+        <img id="galleryImage" src="" class="max-h-[500px] w-auto object-contain mx-auto rounded border shadow" alt="preview" />
+      </div>
+      <div class="flex justify-between mt-4">
+        <button onclick="prevImage()" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600">← Sebelumnya</button>
+        <button onclick="nextImage()" class="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600">Berikutnya →</button>
+      </div>
     </div>
   </div>
-</div>
-
 
   <!-- Modal Import -->
   <div id="importModal" class="fixed inset-0 z-50 bg-black bg-opacity-50 hidden items-center justify-center">
@@ -136,8 +133,7 @@ $kategoriList = $conn->query("SELECT DISTINCT kategori FROM alternatif WHERE kat
 
   <script>
     lucide.createIcons();
-    let galleryFiles = [],
-      currentIndex = 0;
+    let galleryFiles = [], currentIndex = 0;
 
     function openGalleryModal(files) {
       galleryFiles = files;
@@ -168,12 +164,7 @@ $kategoriList = $conn->query("SELECT DISTINCT kategori FROM alternatif WHERE kat
       const search = document.getElementById('search').value;
       const kategori = document.getElementById('kategori').value;
       const sort = document.getElementById('sort').value;
-      const params = new URLSearchParams({
-        search,
-        kategori,
-        sort,
-        page
-      });
+      const params = new URLSearchParams({ search, kategori, sort, page });
 
       fetch('alternatif-ajax.php?' + params.toString())
         .then(res => res.text())

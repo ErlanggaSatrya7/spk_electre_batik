@@ -2,147 +2,126 @@
 require_once '../../../helpers/auth.php';
 require_once '../../../config/db.php';
 
-$pageTitle = "Hasil Perangkingan";
+$pageTitle = "Hasil Ranking";
+$pengaturan = $conn->query("SELECT * FROM pengaturan WHERE id = 1")->fetch(PDO::FETCH_ASSOC);
+$logo = $pengaturan['logo'] ?? 'logo-batik.png';
 
-// Ambil data alternatif dan skor
-$alternatif = $conn->query("SELECT * FROM alternatif")->fetchAll(PDO::FETCH_ASSOC);
-$ranking = [];
-foreach ($alternatif as $a) {
-  $ranking[$a['id']] = $a['skor'] ?? 0;
+// Ambil data alternatif
+$alternatifs = $conn->query("SELECT id, nama FROM alternatif ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+$altIDs = array_column($alternatifs, 'id');
+$altNames = array_column($alternatifs, 'nama', 'id');
+
+// Ambil nilai
+$nilai = [];
+foreach ($conn->query("SELECT * FROM nilai") as $n) {
+  $nilai[$n['id_alternatif']][$n['id_kriteria']] = floatval($n['nilai']);
 }
-arsort($ranking); // Urutkan skor tertinggi ke bawah
+
+// Bobot kriteria
+$kriteria = $conn->query("SELECT id, bobot FROM kriteria")->fetchAll(PDO::FETCH_ASSOC);
+$bobot = array_column($kriteria, 'bobot', 'id');
+
+// Matriks Concordance & Discordance
+$concordance = $discordance = [];
+foreach ($altIDs as $i) {
+  foreach ($altIDs as $j) {
+    if ($i === $j) continue;
+    // Concordance
+    $cij = 0;
+    foreach ($bobot as $kid => $b) {
+      if (($nilai[$i][$kid] ?? 0) >= ($nilai[$j][$kid] ?? 0)) $cij += $b;
+    }
+    $concordance[$i][$j] = $cij;
+
+    // Discordance
+    $maxAll = $maxDiff = 0;
+    foreach ($bobot as $kid => $b) {
+      $a = $nilai[$i][$kid] ?? 0;
+      $bVal = $nilai[$j][$kid] ?? 0;
+      $diff = abs($a - $bVal);
+      $maxAll = max($maxAll, $diff);
+      if ($a < $bVal) $maxDiff = max($maxDiff, $diff);
+    }
+    $discordance[$i][$j] = $maxAll ? $maxDiff / $maxAll : 0;
+  }
+}
+
+$thresholdC = array_sum(array_map('array_sum', $concordance)) / (count($altIDs) * (count($altIDs) - 1));
+$thresholdD = array_sum(array_map('array_sum', $discordance)) / (count($altIDs) * (count($altIDs) - 1));
+
+// Dominan matriks dan agregat
+$skor = [];
+foreach ($altIDs as $i) {
+  $skor[$i] = 0;
+  foreach ($altIDs as $j) {
+    if ($i === $j) continue;
+    $isDominantC = $concordance[$i][$j] >= $thresholdC;
+    $isDominantD = $discordance[$i][$j] >= $thresholdD;
+    if ($isDominantC && $isDominantD) $skor[$i]++;
+  }
+}
+arsort($skor);
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
-  <title><?= $pageTitle ?></title>
+  <meta charset="UTF-8">
+  <title>📊 <?= $pageTitle ?> | <?= $pengaturan['nama_aplikasi'] ?? 'SPK Batik' ?></title>
+  <link rel="icon" href="../../../assets/logo/<?= $logo ?>">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .fade-in { animation: fadeIn .5s ease-out forwards; opacity: 0; transform: translateY(10px); }
+    @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+  </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex">
+<body class="bg-white dark:bg-gray-900 text-gray-800 dark:text-white min-h-screen">
+<?php include '../layouts/splash.php'; include '../layouts/sidebar.php'; ?>
+<div class="ml-64 flex flex-col">
+  <?php include '../layouts/topbar.php'; ?>
+  <main class="flex-1 px-6 py-6 fade-in">
+    <h1 class="text-2xl font-bold mb-4">📊 Hasil Akhir Perangkingan</h1>
 
-  <?php include '../layouts/sidebar.php'; ?>
+    <div class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-6">
+      <p>Hasil akhir dari proses metode <strong>ELECTRE</strong>. Alternatif terbaik ditentukan berdasarkan jumlah dominasi yang memenuhi threshold <em>Concordance</em> dan <em>Discordance</em>.</p>
+      <p class="mt-2">🔹 Threshold Concordance: <strong><?= number_format($thresholdC, 4) ?></strong><br>
+         🔻 Threshold Discordance: <strong><?= number_format($thresholdD, 4) ?></strong></p>
+    </div>
 
-  <div class="ml-64 flex-1 flex flex-col min-h-screen">
-    <?php include '../layouts/topbar.php'; ?>
+    <div class="overflow-auto bg-white dark:bg-gray-800 rounded shadow mb-8">
+      <table class="min-w-full text-sm text-center border border-gray-300 dark:border-gray-600">
+        <thead class="bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
+          <tr>
+            <th class="px-4 py-2">🏅 Ranking</th>
+            <th class="px-4 py-2">Alternatif</th>
+            <th class="px-4 py-2">Skor Dominasi</th>
+          </tr>
+        </thead>
+        <tbody>
+          <?php $rank = 1; foreach ($skor as $id => $score): ?>
+            <tr class="border-t <?= $rank === 1 ? 'bg-yellow-100 dark:bg-yellow-900 font-semibold' : '' ?>">
+              <td class="px-4 py-2"><?= $rank === 1 ? '👑' : $rank ?></td>
+              <td class="px-4 py-2"><?= htmlspecialchars($altNames[$id]) ?></td>
+              <td class="px-4 py-2"><?= $score ?></td>
+              <?php $rank++; ?>
+            </tr>
+          <?php endforeach ?>
+        </tbody>
+      </table>
+    </div>
 
-    <main class="flex-1 px-6 py-6 bg-gray-50">
-      <h1 class="text-2xl font-bold mb-4 text-gray-800"><?= $pageTitle ?></h1>
-
-      <!-- Tabs -->
-      <div>
-        <div class="flex border-b border-gray-200 mb-4">
-          <button onclick="showTab('ranking')" class="tab-button px-4 py-2 border-b-2 font-semibold text-sm text-indigo-600 border-indigo-600">Ranking</button>
-          <button onclick="showTab('chart')" class="tab-button px-4 py-2 text-sm text-gray-600 hover:text-indigo-600">Chart</button>
-          <button onclick="showTab('export')" class="tab-button px-4 py-2 text-sm text-gray-600 hover:text-indigo-600">Export</button>
-        </div>
-
-        <!-- Tab: Ranking -->
-        <div id="tab-ranking" class="tab-content">
-          <div class="overflow-x-auto bg-white rounded shadow">
-            <table class="min-w-full text-sm text-left">
-              <thead class="bg-indigo-100 text-indigo-700">
-                <tr>
-                  <th class="px-6 py-3">Peringkat</th>
-                  <th class="px-6 py-3">Alternatif</th>
-                  <th class="px-6 py-3">Skor Dominasi</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php $i = 1;
-                foreach ($ranking as $id => $skor):
-                  $alt = array_filter($alternatif, fn($a) => $a['id'] == $id);
-                  $alt = reset($alt);
-                  $highlight = $i === 1 ? 'bg-yellow-100 font-semibold' : '';
-                ?>
-                  <tr class="border-t <?= $highlight ?>">
-                    <td class="px-6 py-4"><?= $i ?></td>
-                    <td class="px-6 py-4"><?= htmlspecialchars($alt['nama']) ?></td>
-                    <td class="px-6 py-4"><?= number_format($skor, 4) ?></td>
-                  </tr>
-                <?php $i++; endforeach ?>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Tab: Chart -->
-        <div id="tab-chart" class="tab-content hidden">
-          <div class="bg-white rounded shadow p-6">
-            <canvas id="rankingChart" width="400" height="200"></canvas>
-          </div>
-        </div>
-
-        <!-- Tab: Export -->
-        <div id="tab-export" class="tab-content hidden">
-          <div class="bg-white rounded shadow p-6 space-y-4">
-            <a href="export_excel.php" class="inline-block bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded shadow text-sm">📄 Export ke Excel (CSV)</a>
-            <a href="export_pdf.php" class="inline-block bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded shadow text-sm">📕 Export ke PDF</a>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <?php include '../layouts/footer.php'; ?>
-  </div>
-
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script>
-  let chartInstance = null;
-
-  function showTab(id) {
-    document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('border-b-2', 'text-indigo-600', 'border-indigo-600'));
-    document.getElementById('tab-' + id).classList.remove('hidden');
-    event.target.classList.add('border-b-2', 'text-indigo-600', 'border-indigo-600');
-
-    // Inisialisasi Chart hanya saat tab chart dibuka
-    if (id === 'chart' && !chartInstance) {
-      const labels = [<?= implode(',', array_map(function($id) use ($alternatif) {
-        $alt = array_filter($alternatif, fn($a) => $a['id'] == $id);
-        return json_encode(reset($alt)['nama']);
-      }, array_keys($ranking))) ?>];
-
-      const data = {
-        labels: labels,
-        datasets: [{
-          label: 'Skor Dominasi',
-          data: [<?= implode(',', array_map('floatval', array_values($ranking))) ?>],
-          backgroundColor: 'rgba(99, 102, 241, 0.7)',
-          borderRadius: 6
-        }]
-      };
-
-      const ctx = document.getElementById('rankingChart');
-      if (ctx) {
-        chartInstance = new Chart(ctx, {
-          type: 'bar',
-          data: data,
-          options: {
-            responsive: true,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: ctx => `${ctx.raw.toFixed(4)} skor`
-                }
-              }
-            },
-            scales: {
-              y: { beginAtZero: true, ticks: { stepSize: 0.1 } }
-            }
-          }
-        });
-      }
-    }
-  }
-
-  showTab('ranking'); // Default tab
-</script>
-
-  <script>lucide.createIcons();</script>
+    <div class="text-sm text-gray-500 dark:text-gray-400">
+      <h3 class="font-semibold mb-2 text-gray-700 dark:text-white">📝 Keterangan:</h3>
+      <ul class="list-disc pl-5 space-y-1">
+        <li><strong>Ranking 1</strong> adalah alternatif terbaik menurut dominasi agregat.</li>
+        <li>Skor dominasi didapat dari banyaknya alternatif lain yang didominasi oleh tiap alternatif.</li>
+        <li>Semakin tinggi skor, semakin baik performa alternatif terhadap kriteria.</li>
+      </ul>
+    </div>
+  </main>
+  <?php include '../layouts/footer.php'; ?>
+</div>
+<script>lucide.createIcons();</script>
 </body>
 </html>
